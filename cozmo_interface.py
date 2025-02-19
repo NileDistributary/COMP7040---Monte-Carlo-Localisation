@@ -15,13 +15,13 @@ wheeldistance = 80
 # Forward kinematics: compute coordinate frame update as Frame2D from left/right track speed and time of movement
 def track_speed_to_pose_change(left, right, time):
     # TODO
+	l1 = left*time
+	l2 = right*time
 	if left==right:
 		x=l1
 		y=0
 		a=0		
 	else: 	
-		l1 = left*time
-		l2 = right*time
 		theta = (l2-l1)/wheeldistance
 		r = (l1+l2)/ (2*theta)
 		x = r*math.sin(theta)

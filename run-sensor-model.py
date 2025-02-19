@@ -52,7 +52,7 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 	gridAs = np.linspace(0,2*math.pi,11) # facing different possible directions
 
 	# TODO try me out: choose which cubes are considered
-	cubeIDs = [cozmo.objects.LightCube1Id]
+	cubeIDs = [cozmo.objects.LightCube3Id]
 	#cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# precompute inverse coordinate frames for all x/y/a grid positions
@@ -100,7 +100,7 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 				maxP = 0
 				for aIndex in range(len(gridAs)):
 					invFrame = positionInverseFrames[xIndex][yIndex][aIndex] # precomputes inverse frames
-					p = 1. # empty product of probabilities (initial value) is 1.0
+					p = 1.0 # empty product of probabilities (initial value) is 1.0
 					for cubeID in cubeIDs:
 						# compute pose of cube relative to robot
 						relativeTruePose = invFrame.mult(m.landmarks[cubeID].pose) 

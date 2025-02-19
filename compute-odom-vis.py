@@ -64,9 +64,9 @@ def createTurningTrackSpeeds():
 
 
 # create track speed data
-#trackSpeeds = createStraightTrackSpeeds()
+trackSpeeds = createStraightTrackSpeeds()
 #trackSpeeds = createCurvyTrackSpeeds()
-trackSpeeds = createRectangularTrackSpeeds()
+#trackSpeeds = createRectangularTrackSpeeds()
 #trackSpeeds = createTurningTrackSpeeds()
 
 
