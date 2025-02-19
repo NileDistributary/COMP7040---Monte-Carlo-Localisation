@@ -37,12 +37,14 @@ trackSpeedsSpin = [(10000, [-10,10]), (200, [10,10])]
 # results should be *relatively* consistent. Some empirical measurement may also
 # be necessary here!
 
-trackSpeeds = trackSpeedsCircle
-if sys.argv[1] == "Curvy":
+trackSpeeds = trackSpeedsCircle # Had to mdify to allow for default circle option as current structure required the additional argument
+if sys.argv[1] == "Circle":
+   trackSpeeds = trackSpeedsCircle
+elif sys.argv[1] == "Curvy":
    trackSpeeds = trackSpeedsCurvy
 elif sys.argv[1] == "Rect":
    trackSpeeds = trackSpeedsRect
-elif sys.argv[1] == "Spin"
+elif sys.argv[1] == "Spin":
    trackSpeeds = trackSpeedsSpin
 if len(sys.argv) >= 3:
 	logName = sys.argv[2]+".py"
@@ -54,37 +56,38 @@ else:   repeats = 1
 
 
 async def cozmo_program(robot: cozmo.robot.Robot):
-        startPose = robot.pose # return position for multiple runs
-        for r in range(repeats):
-            for m in range(trackSpeeds):
-	        for t in range(m[0]):
-		    #print("Robot pose: " + str(robot.pose))
-		    robotPose = Frame2D.fromPose(robot.pose)
-                    # set the motion for this part of the cycle
-                    if t == 0:
-                       robot.drive_wheel_motors(m[1][0], m[1][1])
-		    #print("Robot pose 2D frame: " + str(robotPose))
-		    robotFrames.append((t,robotPose))
-		    #print()
-		    await asyncio.sleep(0.1)
-            robot.stop_all_motors()
-            if (r+1) < repeats:
-               returned = robot.go_to_pose(startPose)
-               returned.wait_for_completed()
+    startPose = robot.pose # return position for multiple runs
+    for r in range(repeats):
+        for m in trackSpeeds:
+            for t in range(m[0]):
+                #print("Robot pose: " + str(robot.pose))
+                robotPose = Frame2D.fromPose(robot.pose)
+                # set the motion for this part of the cycle
+                if t == 0:
+                    robot.drive_wheel_motors(m[1][0], m[1][1])
+                #print("Robot pose 2D frame: " + str(robotPose))
+                robotFrames.append((t,robotPose))
+                #print()
+                await asyncio.sleep(0.1)
+        robot.stop_all_motors()
+        if (r+1) < repeats:
+            returned = robot.go_to_pose(startPose)
+            returned.wait_for_completed()
 
-	logFile = open(logName, 'w')
+    logFile = open(logName, 'w')
 
-	print("from frame2d import Frame2D", file=logFile)
-	print("robotFrames = [", file=logFile)
-	for idx in range(len(robotFrames)):
-		t = robotFrames[idx][0]
-		x = robotFrames[idx][1].x()
-		y = robotFrames[idx][1].y()
-		a = robotFrames[idx][1].angle()
-		print("   (%d, Frame2D.fromXYA(%f,%f,%f))" % (t,x,y,a), end="", file=logFile)
-		if idx != len(robotFrames)-1:
-			print(",", file=logFile)
-	print("]", file=logFile)
+    print("from frame2d import Frame2D", file=logFile)
+    print("robotFrames = [", file=logFile)
+    for idx in range(len(robotFrames)):
+        t = robotFrames[idx][0]
+        x = robotFrames[idx][1].x()
+        y = robotFrames[idx][1].y()
+        a = robotFrames[idx][1].angle()
+        print("   (%d, Frame2D.fromXYA(%f,%f,%f))" % (t,x,y,a), end="", file=logFile)
+        if idx != len(robotFrames)-1:
+            print(",", file=logFile)
+    print("]", file=logFile)
+
 
 cozmo.robot.Robot.drive_off_charger_on_connect = True
 cozmo.run_program(cozmo_program, use_3d_viewer=True, use_viewer=False)

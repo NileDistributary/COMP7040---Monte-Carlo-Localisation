@@ -52,8 +52,8 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 	gridAs = np.linspace(0,2*math.pi,11) # facing different possible directions
 
 	# TODO try me out: choose which cubes are considered
-	#cubeIDs = [cozmo.objects.LightCube3Id]
-	cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
+	cubeIDs = [cozmo.objects.LightCube1Id]
+	#cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# precompute inverse coordinate frames for all x/y/a grid positions
 	index = 0

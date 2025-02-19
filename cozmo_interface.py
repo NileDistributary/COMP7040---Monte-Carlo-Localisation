@@ -50,7 +50,7 @@ def cliff_sensor_model(robotPose : Frame2D, m : CozmoMap, cliffDetected):
 
 # Take a true cube position (relative to robot frame). 
 # Compute /probability/ of cube being (i) visible AND being detected at a specific measure position (relative to robot frame)
-def cube_sensor_model(trueCubePosition, visible, measuredPosition):
+def cube_sensor_model(expectedCubePosition, visible, measuredCubePosition):
 	# TODO Implement a sensor model for the cube
 	# This should return a value between 0 and 1
 	# visible is a boolean indicating if the cube is visible
@@ -88,7 +88,7 @@ def cube_sensor_model(trueCubePosition, visible, measuredPosition):
 		#N = 1 / ((sigmaX * sigmaY * sigmaA) * (2 * math.pi) ** (3 / 2))  # Normalization factor
 		N = 1
 		pVisible = N * np.exp(-0.5 * (xError + yError + aError))
-		print(pVisible)
+		#print(pVisible)
 
 		#if measuredX > maxX or measuredY > maxY or measuredA > maxA: #need to account for negative values
 		#	pVisible = 0  # Zero probability outside measurable range
@@ -100,13 +100,8 @@ def cube_sensor_model(trueCubePosition, visible, measuredPosition):
 		else:
 			return 1.0 - pVisible
 	else:
-		return 0
-    return 1.0
+		return 0.0
 
 
-# Take a true wall position (relative to robot frame). 
-# Compute /probability/ of wall being (i) visible AND being detected at a specific measure position (relative to robot frame)
-def wall_sensor_model(trueWallPosition, visible, measuredPosition):
-    return 1.0
 
 
