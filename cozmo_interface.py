@@ -5,9 +5,10 @@ from cmap import CozmoMap, is_in_map, Coord2D
 import math
 
 import numpy as np
-cozmoOdomNoiseX = 0.1
-cozmoOdomNoiseY = 0.1
-cozmoOdomNoiseTheta = 0.1
+
+cozmoOdomNoiseX = 0.2
+cozmoOdomNoiseY = 0.2
+cozmoOdomNoiseTheta = 0.001
 
 wheeldistance = 80
 
@@ -50,6 +51,56 @@ def cliff_sensor_model(robotPose : Frame2D, m : CozmoMap, cliffDetected):
 # Take a true cube position (relative to robot frame). 
 # Compute /probability/ of cube being (i) visible AND being detected at a specific measure position (relative to robot frame)
 def cube_sensor_model(trueCubePosition, visible, measuredPosition):
+	# TODO Implement a sensor model for the cube
+	# This should return a value between 0 and 1
+	# visible is a boolean indicating if the cube is visible
+	# measuredPosition is the position of the cube relative to the robot
+	# trueCubePosition is the true position of the cube relative to the robot
+	if visible:
+		measuredX = measuredCubePosition.x()
+		measuredY = measuredCubePosition.y() #consider taking absolute value
+		measuredA = measuredCubePosition.angle()
+
+		expectedX = expectedCubePosition.x()
+		expectedY = expectedCubePosition.y()
+		expectedA = expectedCubePosition.angle()
+
+		sigmaX = 30 #mm
+		sigmaY = 30 #mm
+		sigmaA = 0.25 #radian
+			
+		xDeviation = measuredX - expectedX
+		yDeviation = measuredY - expectedY
+		aDeviation = measuredA - expectedA
+
+		xError = xDeviation * xDeviation / (sigmaX * sigmaX)
+		yError = yDeviation * yDeviation / (sigmaY * sigmaY)
+		aError = aDeviation * aDeviation / (sigmaA * sigmaA)
+
+		maxX = 700 
+		maxY = 700  # Temporary placeholders
+		maxA = 2 * math.pi  # Different for walls
+
+		minX = 50
+		minY = 50
+		minA = - 2 * math.pi  # Different for walls
+
+		#N = 1 / ((sigmaX * sigmaY * sigmaA) * (2 * math.pi) ** (3 / 2))  # Normalization factor
+		N = 1
+		pVisible = N * np.exp(-0.5 * (xError + yError + aError))
+		print(pVisible)
+
+		#if measuredX > maxX or measuredY > maxY or measuredA > maxA: #need to account for negative values
+		#	pVisible = 0  # Zero probability outside measurable range
+		#if measuredX < minX or measuredY < minY or measuredA < minA: #need to account for negative values 
+		#	pVisible = 0 
+
+		if visible:
+			return pVisible
+		else:
+			return 1.0 - pVisible
+	else:
+		return 0
     return 1.0
 
 
@@ -58,18 +109,4 @@ def cube_sensor_model(trueCubePosition, visible, measuredPosition):
 def wall_sensor_model(trueWallPosition, visible, measuredPosition):
     return 1.0
 
-''' updated sensor model adds walls to list of sensed objects. We assume here that walls will
-    be passed in much like cubes, namely as a dict of visible ones and a dict of (left,centre,right) frame
-    triplets. We expect the visibility list AND the frame list to be in the Cozmo ID system rather than the
-    simulation ID  system (i.e. walls not yet even detected aren't here). There will have to be a
-    transformation at the user side from the returned wall poses in visible_walls() to the relative frames
-    passed in here (or we could set this up so that visible_walls returns Frames rather than poses)'''
-def cozmo_sensor_model(robotPose : Frame2D, m : CozmoMap, cliffDetected, cubeVisibility, cubeRelativeFrames, wallVisibility, wallRelativeFrames):
-        p = 1.
-        #for cubeID in cubeVisibility:
-                #cube_sensor_model(.....) # FIXME use result correctly
-        #for wallCID in wallVisibility:
-                #wall_sensor_model(.....) # FIXME use result correctly
-        p = p * cliff_sensor_model(robotPose, m, cliffDetected)
-        return p
 
