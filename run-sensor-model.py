@@ -8,7 +8,7 @@ import cozmo
 from frame2d import Frame2D 
 from cmap import CozmoMap, plotMap, loadU08520Map
 from matplotlib import pyplot as plt
-from cozmo_interface import cube_sensor_model
+from cozmo_interface import cube_sensor_model, cliff_sensor_model
 import math
 import numpy as np
 
@@ -52,8 +52,8 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 	gridAs = np.linspace(0,2*math.pi,11) # facing different possible directions
 
 	# TODO try me out: choose which cubes are considered
-	cubeIDs = [cozmo.objects.LightCube3Id]
-	#cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
+	#cubeIDs = [cozmo.objects.LightCube3Id]
+	cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# precompute inverse coordinate frames for all x/y/a grid positions
 	index = 0
@@ -91,6 +91,9 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 			cubeVisibility[cubeID] =  visible
 			cubeRelativeFrames[cubeID] =  relativePose
 
+		# read cliff sensor
+		cliffDetected = robot.is_cliff_detected
+		
 		# compute position beliefs over grid (and store future visualization colors in gridCs)
 		index = 0
 		for xIndex in range (0,numX):
@@ -105,7 +108,8 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 						# compute pose of cube relative to robot
 						relativeTruePose = invFrame.mult(m.landmarks[cubeID].pose) 
 						# overall probability is the product of individual probabilities (assumed conditionally independent)
-						p = p * cube_sensor_model(relativeTruePose,cubeVisibility[cubeID],cubeRelativeFrames[cubeID])
+						p = p * cube_sensor_model(relativeTruePose,cubeVisibility[cubeID],cubeRelativeFrames[cubeID]) 
+						#* cliff_sensor_model(robotPose,m,cliffDetected)
 					# maximum probability over different angles is the one visualized in the end
 					if maxP < p:
 						maxP = p

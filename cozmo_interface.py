@@ -100,8 +100,15 @@ def cube_sensor_model(expectedCubePosition, visible, measuredCubePosition):
 		else:
 			return 1.0 - pVisible
 	else:
-		return 0.0
+		return 1.0 #cube is not visible and makes other postions plausible???? No cube detected, I could be anywhere! 
 
+'''
+Handling Invisible Cubes
 
+    Right now, if a cube is not visible (visible == False), your function returns 0.0.
+    The problem is that in a Monte Carlo Localisation (MCL) framework, probabilities are multiplied across multiple sensor observations.
+    If even one cube is invisible, returning 0.0 will cause the entire probability product to be zero, which essentially wipes out all hypotheses.
+    Instead, when a cube is invisible, the function should return 1.0 so that it does not negatively impact the overall probability.
+'''
 
 
