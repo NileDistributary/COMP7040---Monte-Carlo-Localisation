@@ -88,31 +88,15 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 
 		# MCL step 1: prediction (shift particle through motion model)
 		# For each particle
+		poseChange = track_speed_to_pose_change(lspeed,rspeed,timeInterval) # Deterministic change that applies to all particles
+		poseChangeXYA = poseChange.toXYA()
 		for i in range(0,numParticles):
-			# TODO this is all wrong...
-			dx = 200-currentParticles[i].x()
-			dy = 350-currentParticles[i].y()
-			v = math.sqrt(lspeed*lspeed + rspeed*rspeed)
-			currentParticles[i] = currentParticles[i].mult(Frame2D.fromXYA(0.1*dy,-0.1*dx,0))
-
-			poseChange = track_speed_to_pose_change(lspeed,rspeed,timeInterval)
-			poseChangeXYA = poseChange.toXYA()
-			for particle in currentParticles:
-				# add gaussian error to x,y,a
-				poseChangeXYAnoise = np.add(poseChangeXYA, xyaNoise.sample())
-				# integrate change
-				poseChangeNoise = Frame2D.fromXYA(poseChangeXYAnoise)
-				pose = particle.mult(poseChangeNoise)
-				poseXYA = pose.toXYA()
-
-				# keep data for further integration and visualization
-				poseVecs[run,t+1,:] = poseXYA
-				poseFrames[run].append(pose)
-
+			poseChangeXYAnoise = np.add(poseChangeXYA, xyaNoise.sample()) # Add perturbation/noise to the deterministic motion model on each particle
+			poseChangeNoise = Frame2D.fromXYA(poseChangeXYAnoise)
+			currentParticles[i] = currentParticles[i].mult(poseChangeNoise) # Apply the noisy motion model to each particle
 
 			# TODO Instead: shift particles along deterministic motion model, then add perturbation with xyaNoise (see above)
 		# See run-odom-vis.py under "Run simulations" 
-
 
 
 		# MCL step 2: weighting (weigh particles with sensor model)
