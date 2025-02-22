@@ -50,7 +50,7 @@ xyaNoise = GaussianTable(np.zeros([3]),xyaNoiseVar,10000)
 def runMCLLoop(robot: cozmo.robot.Robot):
 	global particles
 	
-	particleWeights = np.zeros([numParticles])
+	particleWeights = np.zeros([numParticles]) # consider np.ones instead (Nile)
 	cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# main loop
@@ -101,8 +101,17 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 
 		# MCL step 2: weighting (weigh particles with sensor model)
 		for i in range(0,numParticles):
-			# TODO this is all wrong (again) ... 
-			particleWeights[i] = cozmo_cliff_sensor_model(currentParticles[i], m, cliffDetected)
+			# TODO this is all wrong (again) ...
+			#THE TRUE SENSOR MODEL IS cube_sensor_model(expectedCubePosition, visible, measuredCubePosition) WHAT IS THE PROB THAT I AM MEASURING THIS GIVEN WHERE I THINK I AM 
+			p = 1.0
+			for cubeID in cubeIDs:
+				relativeTruePose = currentParticles[i].inverse().mult(m.landmarks[cubeID].pose)
+				p = p * cube_sensor_model(relativeTruePose, cubeVisibility[cubeID], cubeRelativeFrames[cubeID])
+			p = p * cozmo_cliff_sensor_model(currentParticles[i], m, cliffDetected)
+			particleWeights[i] = p
+
+		# We have to normalise the particle weights now since we probably won't get away like we did in sensor model where we returned a maxP
+		particleWeights = cumulNormWeights(particleWeights)# Returns normalized cumulative weights for a given list of weights. Taken from mcl_tools.py / consider zero weight situation
 			# TODO instead, assign the product of all individual sensor models as weight (including cozmo_cliff_sensor_model!)
 		# See run-sensor-model.py under "compute position beliefs"
 
