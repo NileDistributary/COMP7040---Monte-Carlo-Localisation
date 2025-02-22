@@ -90,9 +90,6 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 				visible = True
 			cubeVisibility[cubeID] =  visible
 			cubeRelativeFrames[cubeID] =  relativePose
-
-		# read cliff sensor
-		cliffDetected = robot.is_cliff_detected
 		
 		# compute position beliefs over grid (and store future visualization colors in gridCs)
 		index = 0
@@ -104,12 +101,13 @@ async def cozmo_program(robot: cozmo.robot.Robot):
 				for aIndex in range(len(gridAs)):
 					invFrame = positionInverseFrames[xIndex][yIndex][aIndex] # precomputes inverse frames
 					p = 1.0 # empty product of probabilities (initial value) is 1.0
+					p = p * cliff_sensor_model(robotPose, m, robot.is_cliff_detected) #coonsider changinng penalty for cliff sensor, seems to returb alot of false readings in time
+					print(p)
 					for cubeID in cubeIDs:
 						# compute pose of cube relative to robot
 						relativeTruePose = invFrame.mult(m.landmarks[cubeID].pose) 
 						# overall probability is the product of individual probabilities (assumed conditionally independent)
 						p = p * cube_sensor_model(relativeTruePose,cubeVisibility[cubeID],cubeRelativeFrames[cubeID]) 
-						#* cliff_sensor_model(robotPose,m,cliffDetected)
 					# maximum probability over different angles is the one visualized in the end
 					if maxP < p:
 						maxP = p
