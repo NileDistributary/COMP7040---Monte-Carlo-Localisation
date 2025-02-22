@@ -32,7 +32,7 @@ def cumulNormWeights(particleWeights):
 		s = s+w
 	normWeights = [particleWeights[0]/s]
 	cumulNormWeights = [particleWeights[0]/s]
-	for i in range(1,particleWeights.size):
+	for i in range(1,len(particleWeights)): #modified becuase of type error 
 		normWeights.append(particleWeights[i]/s)
 		cumulNormWeights.append(cumulNormWeights[i-1]+normWeights[i])
 	return cumulNormWeights

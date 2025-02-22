@@ -8,7 +8,7 @@ import cozmo
 from frame2d import Frame2D 
 from map import CozmoMap, plotMap, loadU08520Map, Coord2D
 from matplotlib import pyplot as plt
-from cozmo_interface import cube_sensor_model
+from cozmo_interface import cube_sensor_model, cliff_sensor_model
 from cozmo_interface import track_speed_to_pose_change,cozmoOdomNoiseX,cozmoOdomNoiseY,cozmoOdomNoiseTheta
 from mcl_tools import *
 from gaussian import Gaussian, GaussianTable, plotGaussian
@@ -30,7 +30,7 @@ mapPrior = Uniform(
 
 
 # TODO Major parameter to choose: number of particles
-numParticles = 30
+numParticles = 500
 
 # The main data structure: array for particles, each represnted as Frame2D
 particles = sampleFromPrior(mapPrior,numParticles)
@@ -105,9 +105,9 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 			#THE TRUE SENSOR MODEL IS cube_sensor_model(expectedCubePosition, visible, measuredCubePosition) WHAT IS THE PROB THAT I AM MEASURING THIS GIVEN WHERE I THINK I AM 
 			p = 1.0
 			for cubeID in cubeIDs:
-				relativeTruePose = currentParticles[i].inverse().mult(m.landmarks[cubeID].pose)
+				relativeTruePose = currentParticles[i].inverse().mult(m.landmarks[cubeID]) # removed .pose which is strange because it seems to work in run-sensor-model.py
 				p = p * cube_sensor_model(relativeTruePose, cubeVisibility[cubeID], cubeRelativeFrames[cubeID])
-			p = p * cozmo_cliff_sensor_model(currentParticles[i], m, cliffDetected)
+			p = p * cliff_sensor_model(currentParticles[i], m, cliffDetected)
 			particleWeights[i] = p
 
 		# We have to normalise the particle weights now since we probably won't get away like we did in sensor model where we returned a maxP
