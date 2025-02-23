@@ -30,7 +30,7 @@ mapPrior = Uniform(
 
 
 # TODO Major parameter to choose: number of particles
-numParticles = 500
+numParticles = 100
 
 # The main data structure: array for particles, each represnted as Frame2D
 particles = sampleFromPrior(mapPrior,numParticles)
@@ -110,28 +110,22 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 			p = p * cliff_sensor_model(currentParticles[i], m, cliffDetected)
 			particleWeights[i] = p
 
-		# We have to normalise the particle weights now since we probably won't get away like we did in sensor model where we returned a maxP
-		particleWeights = cumulNormWeights(particleWeights)# Returns normalized cumulative weights for a given list of weights. Taken from mcl_tools.py / consider zero weight situation
 			# TODO instead, assign the product of all individual sensor models as weight (including cozmo_cliff_sensor_model!)
 		# See run-sensor-model.py under "compute position beliefs"
 
 		# MCL step 3: resampling (proportional to weights)
-		# TODO not completely wrong, but not yet solving the problem
-		
-		# TODO Draw a number of "fresh" samples from all over the map and add them in order 
-		# 		to recover form mistakes (use sampleFromPrior from mcl_tools.py)
-		# Returns numParticles particles (Frame2D) sampled from a distribution over x/y/a
-		
-	
+		# TODO not completely wrong, but not yet solving the problem	
 		# TODO Keep the overall number of samples at numParticles
 		freshParticlePortion = 0.1
 		numFreshParticles = int(numParticles*freshParticlePortion)
 		numResampledParticles = numParticles - numFreshParticles
-		resampledParticles = resampleIndependent(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise)
+		resampledParticles = resampleIndependent(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise) #This function also normalises the weights
+		# TODO Draw a number of "fresh" samples from all over the map and add them in order to recover from mistakes (use sampleFromPrior from mcl_tools.py)
+		# Returns numParticles particles (Frame2D) sampled from a distribution over x/y/a
 		freshParticles = sampleFromPrior(mapPrior, numFreshParticles)
 		newParticles = resampledParticles + freshParticles
 		# TODO Compare the independent re-sampling with "resampleLowVar" from mcl_tools.py
-		# TODO Find reasonable amplitues for the resampling noise xyaResampleNoise (see above)
+		# TODO Find reasonable amplitudes for the resampling noise xyaResampleNoise (see above)
 		# TODO Can you dynamically determine a reasonable number of "fresh" samples.
 		# 		For instance: under which circumstances could it be better to insert no fresh samples at all?
 		
@@ -147,6 +141,7 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 			time.sleep(timeInterval - timeTaken)
 		else:
 			print("Warning: loop iteration tool more than "+str(timeInterval) + " seconds (t="+str(timeTaken)+")")
+		
 
 def runPlotLoop(robot: cozmo.robot.Robot):
 	global particles
@@ -188,6 +183,7 @@ def runPlotLoop(robot: cozmo.robot.Robot):
 
 
 def cozmo_program(robot: cozmo.robot.Robot):
+	robot.set_head_angle(cozmo.util.degrees(0)).wait_for_completed() #done for standardisation 
 	threading.Thread(target=runMCLLoop, args=(robot,)).start()
 	threading.Thread(target=runPlotLoop, args=(robot,)).start()
 
