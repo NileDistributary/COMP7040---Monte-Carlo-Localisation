@@ -6,8 +6,8 @@ import math
 
 import numpy as np
 
-cozmoOdomNoiseX = 0.2
-cozmoOdomNoiseY = 0.2
+cozmoOdomNoiseX = 0.002
+cozmoOdomNoiseY = 0.002
 cozmoOdomNoiseTheta = 0.001
 
 wheeldistance = 80
