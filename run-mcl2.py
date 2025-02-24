@@ -119,12 +119,12 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 		freshParticlePortion = 0.1
 		numFreshParticles = int(numParticles*freshParticlePortion)
 		numResampledParticles = numParticles - numFreshParticles
-		resampledParticles = resampleIndependent(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise) #This function also normalises the weights
+		# TODO Compare the independent re-sampling with "resampleLowVar" from mcl_tools.py
+		resampledParticles = resampleLowVar(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise) #This function also normalises the weights
 		# TODO Draw a number of "fresh" samples from all over the map and add them in order to recover from mistakes (use sampleFromPrior from mcl_tools.py)
 		# Returns numParticles particles (Frame2D) sampled from a distribution over x/y/a
 		freshParticles = sampleFromPrior(mapPrior, numFreshParticles)
 		newParticles = resampledParticles + freshParticles
-		# TODO Compare the independent re-sampling with "resampleLowVar" from mcl_tools.py
 		# TODO Find reasonable amplitudes for the resampling noise xyaResampleNoise (see above)
 		# TODO Can you dynamically determine a reasonable number of "fresh" samples.
 		# 		For instance: under which circumstances could it be better to insert no fresh samples at all?
