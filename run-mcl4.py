@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+#FOR LOGGING METRICS
 
 import asyncio
 
@@ -17,7 +17,8 @@ import math
 import numpy as np
 import threading
 import time
-
+import csv
+import os
 	
 
 # this data structure represents the map
@@ -34,6 +35,7 @@ numParticles = 100
 
 # The main data structure: array for particles, each represnted as Frame2D
 particles = sampleFromPrior(mapPrior,numParticles)
+particleWeights = np.zeros([numParticles]) # consider np.ones instead (Nile)
 
 #noise injected in re-sampling process to avoid multiple exact duplications of a particle
 # TODO Choose sensible re-sampling variation
@@ -48,9 +50,7 @@ xyaNoise = GaussianTable(np.zeros([3]),xyaNoiseVar,10000)
 
 
 def runMCLLoop(robot: cozmo.robot.Robot):
-	global particles
-	
-	particleWeights = np.zeros([numParticles]) # consider np.ones instead (Nile)
+	global particles, particleWeights
 	cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# main loop
@@ -183,6 +183,20 @@ def runPlotLoop(robot: cozmo.robot.Robot):
 		
 		time.sleep(0.01)
 
+def compute_neff(weights):
+    return 1.0 / np.sum(np.square(weights))
+def compute_certainty(particles):
+    particlesXYA = np.array([p.toXYA() for p in particles])
+    
+    # Compute covariance matrix
+    covariance_matrix = np.cov(particlesXYA[:, :2], rowvar=False)  # Only x, y
+
+    # Certainty metric: determinant of covariance (area covered)
+    certainty = 1 / (np.linalg.det(covariance_matrix) + 1e-6)  # Avoid division by zero
+
+    return certainty
+
+
 
 def cozmo_program(robot: cozmo.robot.Robot):
 	robot.set_head_angle(cozmo.util.degrees(0)).wait_for_completed() #done for standardisation 
@@ -190,9 +204,14 @@ def cozmo_program(robot: cozmo.robot.Robot):
 	threading.Thread(target=runPlotLoop, args=(robot,)).start()
 
 	robot.enable_stop_on_cliff(True)
-
+	# Open CSV file for logging
+	csv_path = os.path.join("data", "localisationmetrics.csv")
+	with open(csv_path, mode="w", newline="") as file:
+		writer = csv.writer(file)
+		writer.writerow(["time", "Certainty", "Effective Number of Particles", "Mean Weight"])  # Header row
 	# main loop
 	# TODO insert driving and navigation behavior HERE
+	timeInterval = 0.1
 	t = 0
 	while True:
 		# Establish location by exploring possibly by turning at differnt angles in place
@@ -200,15 +219,22 @@ def cozmo_program(robot: cozmo.robot.Robot):
 		# Calculate the current postion of the robot from the MCL
 		# Use appropriate algorithm to determine path to goal avoiding cubes and cliffs with clearance (which have particular coordinates)
 		# Drive to goal and possible check every other node if the robot is still localised
+		certainty = compute_certainty(particles)
+		neff = compute_neff(particleWeights)
+		mean_weight = np.mean(particleWeights)
+		print(f"Certainty: {certainty:.4f}, Effective Particles: {neff:.2f}, Mean Weight: {mean_weight:.4f}")
 
+		# Write to CSV
+		writer.writerow([t, certainty, neff, mean_weight])
+		file.flush()  # Ensure data is written to disk
 
-		print("Straight")
-		robot.drive_straight(distance_mm(150), speed_mmps(50)).wait_for_completed()
-		print("Turn")
-		robot.turn_in_place(degrees(90),speed=degrees(20)).wait_for_completed()
-		print("Sleep")
-		time.sleep(1)
-
+		t += 1
+		t1 = time.time()
+		timeTaken = t1 - t0
+		if timeTaken < timeInterval:
+			time.sleep(timeInterval - timeTaken)
+		else:
+			print(f"Warning: loop iteration took longer than {timeInterval} seconds (t={timeTaken:.4f})")
 
 
 cozmo.robot.Robot.drive_off_charger_on_connect = False
