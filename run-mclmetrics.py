@@ -17,6 +17,8 @@ import math
 import numpy as np
 import threading
 import time
+import os
+import csv
 
 	
 
@@ -30,10 +32,11 @@ mapPrior = Uniform(
 
 
 # TODO Major parameter to choose: number of particles
-numParticles = 100
+numParticles = 75
 
 # The main data structure: array for particles, each represnted as Frame2D
 particles = sampleFromPrior(mapPrior,numParticles)
+particleWeights = np.zeros([numParticles]) # consider np.ones instead (Nile)
 
 #noise injected in re-sampling process to avoid multiple exact duplications of a particle
 # TODO Choose sensible re-sampling variation
@@ -48,9 +51,9 @@ xyaNoise = GaussianTable(np.zeros([3]),xyaNoiseVar,10000)
 
 
 def runMCLLoop(robot: cozmo.robot.Robot):
-	global particles
+	global particles,particleWeights
 	
-	particleWeights = np.zeros([numParticles]) # consider np.ones instead (Nile)
+	
 	cubeIDs = [cozmo.objects.LightCube1Id,cozmo.objects.LightCube2Id,cozmo.objects.LightCube3Id]
 
 	# main loop
@@ -119,12 +122,12 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 		freshParticlePortion = 0.1
 		numFreshParticles = int(numParticles*freshParticlePortion)
 		numResampledParticles = numParticles - numFreshParticles
-		resampledParticles = resampleIndependent(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise) #This function also normalises the weights
+		# TODO Compare the independent re-sampling with "resampleLowVar" from mcl_tools.py
+		resampledParticles = resampleLowVar(currentParticles, particleWeights, numResampledParticles, xyaResampleNoise) #This function also normalises the weights
 		# TODO Draw a number of "fresh" samples from all over the map and add them in order to recover from mistakes (use sampleFromPrior from mcl_tools.py)
 		# Returns numParticles particles (Frame2D) sampled from a distribution over x/y/a
 		freshParticles = sampleFromPrior(mapPrior, numFreshParticles)
 		newParticles = resampledParticles + freshParticles
-		# TODO Compare the independent re-sampling with "resampleLowVar" from mcl_tools.py
 		# TODO Find reasonable amplitudes for the resampling noise xyaResampleNoise (see above)
 		# TODO Can you dynamically determine a reasonable number of "fresh" samples.
 		# 		For instance: under which circumstances could it be better to insert no fresh samples at all?
@@ -132,7 +135,7 @@ def runMCLLoop(robot: cozmo.robot.Robot):
 		# write global variable
 		particles = newParticles
 
-		print("t = "+str(t))
+		#print("t = "+str(t))
 		t = t+1
 
 		t1 = time.time()
@@ -181,6 +184,16 @@ def runPlotLoop(robot: cozmo.robot.Robot):
 		
 		time.sleep(0.01)
 
+def compute_neff(weights):
+    total = np.sum(weights)
+    if total == 0:
+        return 0  # Prevent division by zero if weights are all zero
+
+    normalized_weights = weights / total  # Local normalization
+    return 1.0 / np.sum(normalized_weights ** 2)
+
+
+
 
 def cozmo_program(robot: cozmo.robot.Robot):
 	robot.set_head_angle(cozmo.util.degrees(0)).wait_for_completed() #done for standardisation 
@@ -188,24 +201,32 @@ def cozmo_program(robot: cozmo.robot.Robot):
 	threading.Thread(target=runPlotLoop, args=(robot,)).start()
 
 	robot.enable_stop_on_cliff(True)
-
+	# Open CSV file for logging
+	csv_path = os.path.join("data", "localisationmetrics-75particles.csv")
+	with open(csv_path, mode="w", newline="") as file:
+		writer = csv.writer(file)
+		writer.writerow(["Certainty", "Effective Number of Particles", "Mean Weight"])  # Header row
+	
+	#print("Straight")
+	#robot.drive_straight(distance_mm(150), speed_mmps(50)).wait_for_completed()
+	time.sleep(3) # Wait for Cozmo to localise
 	# main loop
 	# TODO insert driving and navigation behavior HERE
 	t = 0
 	while True:
-		print("Straight")
-		robot.drive_straight(distance_mm(150), speed_mmps(50)).wait_for_completed()
-		print("Turn")
-		robot.turn_in_place(degrees(90),speed=degrees(20)).wait_for_completed()
-		print("Sleep")
-		time.sleep(1)
+# Write to CSV
+		
+		neff = compute_neff(particleWeights)
+		mean_weight = np.mean(particleWeights)
+		print(f"Effective Particles: {neff:.2f}, Mean Weight: {mean_weight:.4f}")
+		with open(csv_path, mode="a", newline="") as file:
+			writer = csv.writer(file)
+			writer.writerow([neff, mean_weight])
+			file.flush()  # Ensure data is written to disk
+		time.sleep(0.1)
 
 
 
 cozmo.robot.Robot.drive_off_charger_on_connect = False
 cozmo.run_program(cozmo_program, use_3d_viewer=False, use_viewer=False)
-
-
-
-		
 
