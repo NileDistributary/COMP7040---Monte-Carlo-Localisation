@@ -1,6 +1,6 @@
 import numpy as np
 from frame2d import Frame2D
-from motionLog1 import robotFrames
+from motionLog3 import robotFrames
 import matplotlib.pyplot as plt
 
 # We are using trackSpeedsCircle
@@ -68,9 +68,4 @@ plt.title('Error vs Wheel Distance Parameter')
 plt.legend()
 plt.grid(True)
 plt.show()
-
-# Find the optimal wheel distance
-optimal_dist = min(results, key=lambda d: results[d]['combined_error'])
-print(f"Optimal wheel distance: {optimal_dist} mm")
-print(f"Position error: {results[optimal_dist]['position_error']:.2f} mm")
-print(f"Angle error: {results[optimal_dist]['angle_error']:.4f} rad")
+plt.savefig('plots/Wheel Distance Error/wheeldistanceerrorformotionLog3.png')
