@@ -1,6 +1,6 @@
 import numpy as np
 from frame2d import Frame2D
-from motionLog3 import robotFrames
+from motionLog1 import robotFrames
 import matplotlib.pyplot as plt
 
 # We are using trackSpeedsCircle
@@ -67,5 +67,5 @@ plt.ylabel('Error')
 plt.title('Error vs Wheel Distance Parameter')
 plt.legend()
 plt.grid(True)
+plt.savefig('plots/Wheel Distance Error/wheeldistanceerrorformotionLog1.png')
 plt.show()
-plt.savefig('plots/Wheel Distance Error/wheeldistanceerrorformotionLog3.png')
