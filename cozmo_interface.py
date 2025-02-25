@@ -10,7 +10,7 @@ cozmoOdomNoiseX = 0.002
 cozmoOdomNoiseY = 0.002
 cozmoOdomNoiseTheta = 0.001
 
-wheeldistance = 80
+wheeldistance = 70 #mm , determined experimentally
 
 # Forward kinematics: compute coordinate frame update as Frame2D from left/right track speed and time of movement
 def track_speed_to_pose_change(left, right, time):
