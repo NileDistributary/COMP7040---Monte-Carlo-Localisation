@@ -24,29 +24,31 @@ mapPrior = Uniform(
     np.array([m.grid.maxX(), m.grid.maxY(), 2*math.pi]))
 cubeIDs = [cozmo.objects.LightCube1Id, cozmo.objects.LightCube2Id, cozmo.objects.LightCube3Id]
 
-
 # MCL parameters
-numParticles = 100  # Increased for better localization
+numParticles = 100
 particles = sampleFromPrior(mapPrior, numParticles)
-particleWeights = np.ones([numParticles]) / numParticles  # Initialize with uniform weights
+particleWeights = np.ones([numParticles]) / numParticles
 
 # Noise models
-xyaResampleVar = np.diag([10, 10, 10*math.pi/180])  # Reduced from 10 for more stability
+xyaResampleVar = np.diag([10, 10, 10*math.pi/180])
 xyaResampleNoise = GaussianTable(np.zeros([3]), xyaResampleVar, 10000)
 xyaNoiseVar = np.diag([cozmoOdomNoiseX, cozmoOdomNoiseY, cozmoOdomNoiseTheta])
 xyaNoise = GaussianTable(np.zeros([3]), xyaNoiseVar, 10000)
 
-# Navigation control flags and control variables
+# Navigation control flags and variables
 localized = False
 path_planning_done = False
 navigation_complete = False
 robot_at_goal = False
 localization_start_time = None
 localization_stability_counter = 0
+navigation_in_progress = False    # New flag to track navigation state
+navigation_action_count = 0       # Counter for consecutive navigation actions
+consecutive_localization_failures = 0  # Counter for consecutive localization failures
 
 # Localization quality metrics
-min_effective_particles_ratio = 0.4  # Minimum ratio of effective particles required
-min_mean_weight = 0.5  # Minimum mean weight
+min_effective_particles_ratio = 0.4
+min_mean_weight = 0.5
 numVisibleCubes = 0 
 
 # Store estimated robot pose
@@ -87,12 +89,8 @@ def estimate_robot_pose():
         
         # Update estimated pose
         estimated_pose = Frame2D.fromXYA(mean_x, mean_y, mean_angle)
-        
     
     return estimated_pose
-
-# Counter for stable localization (add this with your other global variables)
-localization_stability_counter = 0
 
 def is_well_localized(robot: cozmo.robot.Robot):
     """Determine if the robot is sufficiently localized with hysteresis."""
@@ -111,7 +109,13 @@ def is_well_localized(robot: cozmo.robot.Robot):
             numVisibleCubes += 1
     
     # Use different thresholds based on current state (hysteresis)
-    if localized:
+    # More relaxed criteria during active navigation
+    if navigation_in_progress:
+        # Very relaxed criteria during navigation to avoid interrupting
+        criteria_met = (effective_particle_ratio >= min_effective_particles_ratio * 0.5 or 
+                       mean_weight >= min_mean_weight * 0.5 or
+                       navigation_action_count < 3)  # Allow at least 3 navigation actions
+    elif localized:
         # Once localized, use more relaxed criteria to maintain localization
         criteria_met = (effective_particle_ratio >= min_effective_particles_ratio * 0.8 and 
                        mean_weight >= min_mean_weight * 0.8 and 
@@ -129,12 +133,22 @@ def is_well_localized(robot: cozmo.robot.Robot):
         localization_stability_counter = max(0, localization_stability_counter - 1)
     
     # Only change localization state after sustained evidence
+    # Be more cautious about losing localization during navigation
     if localization_stability_counter >= 3 and not localized:
         print("Robot is now well localized!")
         localized = True
+        consecutive_localization_failures = 0
     elif localization_stability_counter <= 0 and localized:
-        print("Lost localization. Restarting localization process...")
-        localized = False
+        if navigation_in_progress and navigation_action_count < 5:
+            # If we just started navigating, maintain localization status
+            print("Maintaining localization during initial navigation despite indicators")
+            return True
+        else:
+            consecutive_localization_failures += 1
+            if consecutive_localization_failures >= 3:
+                print("Lost localization after multiple checks. Restarting localization process...")
+                localized = False
+                consecutive_localization_failures = 0
     
     # For debugging
     print(f"Stability counter: {localization_stability_counter}/10, Criteria met: {criteria_met}")
@@ -181,24 +195,26 @@ def plan_path_to_goal():
         return [(goal_x, goal_y)]
     
     # If direct path isn't clear, use a simple waypoint approach to avoid the middle trench
-    # The trench is around x=16-32, y=21-23 in grid coordinates (according to map init in loadU08520Map)
-    
-    # Determine which side of the trench we're on
+    # Check which side of the trench we're on and plan accordingly
     if current_y < 350:  # If we're below the trench
         waypoint_x = 250  # Go to a point left of the trench
         waypoint_y = 150  # and below it
         
         # Then go around to the target
+        path_planning_done = True
         return [(waypoint_x, waypoint_y), (goal_x, goal_y)]
     else:  # If we're above the trench
         waypoint_x = 250  # Go to a point left of the trench
         waypoint_y = 550  # and above it
         
         # Then go to the target
+        path_planning_done = True
         return [(waypoint_x, waypoint_y), (goal_x, goal_y)]
 
 def navigate_to_waypoint(robot, waypoint, max_speed=50):
     """Navigate to a specific waypoint."""
+    global navigation_action_count
+    
     current_pose = estimate_robot_pose()
     
     # Extract current position and waypoint coordinates
@@ -215,7 +231,31 @@ def navigate_to_waypoint(robot, waypoint, max_speed=50):
     
     # If we're close enough to the waypoint, return success
     if distance < 50:  # 50mm tolerance
-        return True
+        # Do a verification scan when we think we've reached the waypoint
+        print(f"Waypoint reached! Distance: {distance:.1f}mm")
+        print("Performing verification scan...")
+        robot.turn_in_place(degrees(180), speed=degrees(15)).wait_for_completed()
+        robot.turn_in_place(degrees(-180), speed=degrees(15)).wait_for_completed()
+        
+        # Re-estimate position after the scan
+        current_pose = estimate_robot_pose()
+        print(f"Updated position: x={current_pose.x():.1f}, y={current_pose.y():.1f}")
+        
+        # Recalculate distance to waypoint with updated position
+        dx = waypoint_x - current_pose.x()
+        dy = waypoint_y - current_pose.y()
+        new_distance = math.sqrt(dx*dx + dy*dy)
+        print(f"Refined distance to waypoint: {new_distance:.1f}mm")
+        
+        # If still close enough after verification, confirm waypoint reached
+        if new_distance < 70:  # Slightly more lenient after verification
+            navigation_action_count = 0  # Reset the counter
+            return True
+        else:
+            # If position correction shows we're not actually at the waypoint, continue
+            print("Position verification shows we're not at waypoint yet. Continuing navigation.")
+            navigation_action_count += 1
+            return False
     
     # Calculate target angle to face the waypoint
     target_angle = math.atan2(dy, dx)
@@ -230,14 +270,16 @@ def navigate_to_waypoint(robot, waypoint, max_speed=50):
         
         print(f"Turning {turn_angle:.1f} degrees to face waypoint")
         robot.turn_in_place(degrees(turn_angle), speed=degrees(30)).wait_for_completed()
+        navigation_action_count += 1
         return False  # Return False to indicate we need to continue navigation
     
     # Then drive forward
     # Limit the distance to drive at once
-    drive_distance = min(distance, 100)  # Drive at most 100mm at a time
+    drive_distance = min(distance, 80)  # Reduced from 100mm to 80mm for more frequent checks
     
     print(f"Driving {drive_distance:.1f}mm toward waypoint")
     robot.drive_straight(distance_mm(drive_distance), speed_mmps(max_speed)).wait_for_completed()
+    navigation_action_count += 1
     return False  # Return False to indicate we need to continue navigation
 
 def check_if_at_goal():
@@ -254,13 +296,15 @@ def check_if_at_goal():
     distance = math.sqrt(dx*dx + dy*dy)
     
     if distance < 50:  # 50mm tolerance
+        # Stop and verify position with a complete turn
+        print("Potential goal reached! Stopping to verify position...")
+        # Do a full 360-degree scan to improve localization
         robot_at_goal = True
         return True
     return False
 
 def runMCLLoop(robot: cozmo.robot.Robot):
     global particles, particleWeights, cubeIDs
-    
     
     # Main MCL loop
     timeInterval = 0.1
@@ -312,12 +356,12 @@ def runMCLLoop(robot: cozmo.robot.Robot):
             particleWeights[i] = p
         
         # MCL step 3: resampling (proportional to weights)
-        # Dynamically adjust number of fresh particles based on localization quality
-        if np.sum(particleWeights) < 1e-10:
-            # If all weights are very low, inject more fresh particles to recover
-            freshParticlePortion = 0.5
+        # Adapt resampling based on navigation state
+        if navigation_in_progress and navigation_action_count < 3:
+            # During initial navigation, use less fresh particles to maintain direction
+            freshParticlePortion = 0.05
         else:
-            # Check localization quality metrics
+            # Dynamically adjust based on particle quality
             neff = compute_neff(particleWeights)
             effective_ratio = neff / numParticles
             
@@ -342,10 +386,13 @@ def runMCLLoop(robot: cozmo.robot.Robot):
         # Update global particle set
         particles = newParticles
         
-        # Check localization quality
-        is_well_localized(robot)
+        # Update robot pose estimate
+        estimate_robot_pose()
         
-        if t % 10 == 0:  # Print every ~1 second
+        # Only check localization every ~1 second to avoid rapid flipping
+        if t % 10 == 0:
+            # Check localization quality
+            is_well_localized(robot)
             print(f"t = {t}, Visible cubes: {numVisibleCubes}, Fresh particles: {freshParticlePortion:.2f}")
         
         t += 1
@@ -412,12 +459,14 @@ def runPlotLoop(robot: cozmo.robot.Robot):
             status = "Localized - Planning path"
             if path_planning_done:
                 status = "Navigating to goal"
+                if navigation_in_progress:
+                    status = f"Navigating (action: {navigation_action_count})"
                 if robot_at_goal:
                     status = "Goal reached!"
         
         status_info = (f"{status}\n"
-                      f"Eff. Particles: {effective_particle_ratio:.2f}"
-                      f"Mean Weight: {mean_weight:.2f}")  # Display localization quality
+                      f"Eff. Particles: {effective_particle_ratio:.2f}\n"
+                      f"Mean Weight: {mean_weight:.2f}")
         status_text.set_text(status_info)
         
         # Refresh plot
@@ -427,7 +476,7 @@ def runPlotLoop(robot: cozmo.robot.Robot):
         time.sleep(0.05)
 
 def cozmo_program(robot: cozmo.robot.Robot):
-    global path_planning_done, navigation_complete, robot_at_goal
+    global path_planning_done, navigation_complete, robot_at_goal, navigation_in_progress
     
     # Set the head angle for better cube visibility
     robot.set_head_angle(cozmo.util.degrees(0)).wait_for_completed()
@@ -441,10 +490,12 @@ def cozmo_program(robot: cozmo.robot.Robot):
     
     # Wait for initial localization
     print("Waiting for initial localization...")
-    time.sleep(1.5)  # Give MCL time to initialize
+    time.sleep(3)  # Give MCL time to initialize
     
     current_waypoint_index = 0
     path = None
+    last_localization_check = time.time()
+    localization_check_interval = 5.0  # Only check localization every 5 seconds during navigation
     
     # Main navigation loop
     while not robot_at_goal:
@@ -454,8 +505,11 @@ def cozmo_program(robot: cozmo.robot.Robot):
             robot.play_anim_trigger(cozmo.anim.Triggers.MajorWin).wait_for_completed()
             break
         
+        current_time = time.time()
+        
         # If not yet localized, explore to improve localization
         if not localized:
+            navigation_in_progress = False  # Reset navigation status
             global localization_start_time
             
             print("Not well localized. Exploring to improve localization...")
@@ -464,13 +518,14 @@ def cozmo_program(robot: cozmo.robot.Robot):
             if localization_start_time is None:
                 localization_start_time = time.time()
             
-            # Adapt exploration strategy based on time spent
+            # Progressive exploration strategy
             exploration_time = time.time() - localization_start_time
             
             if exploration_time < 10:  # First 10 seconds: just turn to look for cubes
                 robot.turn_in_place(degrees(45), speed=degrees(20)).wait_for_completed()
             elif exploration_time < 20:  # Next 10 seconds: try small forward movements
                 print("Driving forward to explore...")
+                # Try to move toward the center of the map where cubes are more likely to be visible
                 robot.drive_straight(distance_mm(50), speed_mmps(30)).wait_for_completed()
                 robot.turn_in_place(degrees(45), speed=degrees(20)).wait_for_completed()
             else:  # After 20 seconds: more aggressive exploration
@@ -484,6 +539,7 @@ def cozmo_program(robot: cozmo.robot.Robot):
             path = None
             path_planning_done = False
             current_waypoint_index = 0
+            navigation_action_count = 0
         else:
             # We're localized - reset exploration timer
             localization_start_time = None
@@ -515,25 +571,80 @@ def cozmo_program(robot: cozmo.robot.Robot):
         
         # Navigate to the current waypoint
         if localized and path and path_planning_done:
+            navigation_in_progress = True  # Set flag that we're actively navigating
+            
+            # Only check localization periodically during navigation to avoid interrupting progress
+            if current_time - last_localization_check > localization_check_interval:
+                if not is_well_localized(robot) and navigation_action_count > 5:
+                    print("May have lost localization during navigation. Pausing to verify...")
+                    
+                    # Look around for landmarks
+                    robot.turn_in_place(degrees(30), speed=degrees(20)).wait_for_completed()
+                    robot.turn_in_place(degrees(-60), speed=degrees(20)).wait_for_completed()
+                    robot.turn_in_place(degrees(30), speed=degrees(20)).wait_for_completed()
+                    
+                    # Final check
+                    if not is_well_localized(robot):
+                        print("Confirmed loss of localization. Restarting exploration...")
+                        navigation_in_progress = False
+                        path = None
+                        path_planning_done = False
+                        continue
+                
+                last_localization_check = current_time
+            
             current_waypoint = path[current_waypoint_index]
             print(f"Navigating to waypoint {current_waypoint_index+1}/{len(path)}: {current_waypoint}")
             
             # Try to move toward the waypoint
             waypoint_reached = navigate_to_waypoint(robot, current_waypoint)
-            time.sleep(10)
+            
+            # Stop and reorient periodically based on navigation action count
+            if navigation_action_count > 0 and navigation_action_count % 5 == 0:
+                print("Pausing to reorient and confirm position...")
+                # Turn around to look for landmarks
+                robot.turn_in_place(degrees(45), speed=degrees(20)).wait_for_completed()
+                robot.turn_in_place(degrees(-90), speed=degrees(20)).wait_for_completed()
+                robot.turn_in_place(degrees(45), speed=degrees(20)).wait_for_completed()
+                
+                # Update localization quality check
+                last_localization_check = time.time()
+                is_well_localized(robot)
+                
+                # Re-estimate position to improve accuracy
+                current_pose = estimate_robot_pose()
+                print(f"Updated position: x={current_pose.x():.1f}, y={current_pose.y():.1f}")
+                
+                # If we've lost localization, abort navigation
+                if not localized and navigation_action_count > 5:
+                    print("Lost localization during navigation stop. Replanning...")
+                    path = None
+                    path_planning_done = False
+                    navigation_in_progress = False
+                    continue
             
             # If reached the waypoint, move to next waypoint
             if waypoint_reached:
                 print(f"Reached waypoint {current_waypoint_index+1}")
                 current_waypoint_index += 1
+                navigation_action_count = 0  # Reset action counter for the new waypoint
                 
                 # If all waypoints are reached, we're done
                 if current_waypoint_index >= len(path):
                     print("All waypoints reached!")
                     navigation_complete = True
-                    check_if_at_goal()  # Final check if we're at the goal
                     
-                    if robot_at_goal:
+                    # Do a full 360-degree scan to improve final localization
+                    print("Performing final position verification...")
+                    robot.turn_in_place(degrees(360), speed=degrees(15)).wait_for_completed()
+                    
+                    # Re-estimate position after the scan
+                    current_pose = estimate_robot_pose()
+                    print(f"Final position: x={current_pose.x():.1f}, y={current_pose.y():.1f}")
+                    
+                    # Check if we're at the goal
+                    if check_if_at_goal():
+                        print("Goal confirmed! Mission complete.")
                         robot.play_anim_trigger(cozmo.anim.Triggers.MajorWin).wait_for_completed()
                         break
                     else:
@@ -541,25 +652,10 @@ def cozmo_program(robot: cozmo.robot.Robot):
                         print("Finished path but not at goal. Replanning...")
                         path = None
                         path_planning_done = False
-            # Handle losing localization during navigation
-        if path and not localized:
-            print("Lost localization during navigation. Pausing to relocalize.")
-            # Stop and look around
-            robot.stop_all_motors()
-            for _ in range(3):  # Look in different directions
-                robot.turn_in_place(degrees(45), speed=degrees(20)).wait_for_completed()
-                time.sleep(1)
-                if is_well_localized(robot):
-                    break
-            
-            # If still not localized, invalidate path and start over
-            if not localized:
-                print("Failed to relocalize. Starting over.")
-                path = None
-                path_planning_done = False
-        # Pause to allow MCL to update
-        time.sleep(0.5)
-
+                        navigation_in_progress = False
+                
+                # Pause briefly to allow for sensor update and localization check
+                time.sleep(2)
 
 cozmo.robot.Robot.drive_off_charger_on_connect = True
 cozmo.run_program(cozmo_program, use_3d_viewer=False, use_viewer=False)
